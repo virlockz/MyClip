@@ -4,9 +4,8 @@ from pathlib import Path
 
 from myclip.config import DB_PATH, FAISS_PATH
 from myclip.database import Database
-from myclip.search import SearchIndex
+from myclip.search import SearchIndex, hybrid_search
 from myclip.ingest import ingest_directory
-from myclip.embeddings import embed_text
 from myclip.export import export_clip
 from myclip.config import EMBEDDING_DIM, CLIPS_DIR
 
@@ -54,15 +53,16 @@ def main():
         print(f"Done. {count} scenes indexed.")
 
     elif args.command == "search":
-        query_vec = embed_text(args.query)
-        results = index.search(query_vec, k=args.limit)
-        for scene_id, score in results:
-            scene = db.get_scene(scene_id)
-            if scene:
-                print(f"[{score:.3f}] {scene['episode']} scene {scene['scene_number']} "
-                      f"({scene['start_time']:.1f}s-{scene['end_time']:.1f}s)")
-                print(f"  {scene['subtitle_text'][:80]}")
-                print()
+        results = hybrid_search(args.query, index, db, k=args.limit)
+        for scene in results:
+            match_icon = {"visual+text": "[V+T]", "visual": "[V]", "text": "[T]"}.get(
+                scene.get("match_type", ""), "[?]"
+            )
+            print(f"{match_icon} [{scene['score']:.3f}] {scene['episode']} "
+                  f"scene {scene['scene_number']} "
+                  f"({scene['start_time']:.1f}s-{scene['end_time']:.1f}s)")
+            print(f"  {scene['subtitle_text'][:80]}")
+            print()
 
     elif args.command == "list":
         scenes = db.get_scenes(episode=args.episode)

@@ -3,6 +3,9 @@ from pathlib import Path
 import faiss
 import numpy as np
 
+from myclip.database import Database
+from myclip.embeddings import embed_text
+
 
 class SearchIndex:
     def __init__(self, dim: int, path: str | Path | None = None):
@@ -64,3 +67,71 @@ class SearchIndex:
     @property
     def size(self) -> int:
         return self.index.ntotal
+
+
+def hybrid_search(
+    query: str,
+    clip_index: SearchIndex,
+    db: Database,
+    k: int = 10,
+) -> list[dict]:
+    """Search combining CLIP visual similarity + FTS5 text matching.
+
+    Scenes matching BOTH get boosted to the top.
+
+    Args:
+        query: Natural language search query.
+        clip_index: FAISS CLIP vector index.
+        db: Database with FTS5.
+        k: Number of results.
+
+    Returns:
+        List of scene dicts with 'match_type' and 'score' added.
+    """
+    # CLIP visual search
+    query_vec = embed_text(query)
+    clip_results = clip_index.search(query_vec, k=k * 2)
+
+    # FTS5 text search
+    text_results = db.search_text(query, limit=k * 2)
+
+    # Score normalization
+    clip_scores = {}
+    if clip_results:
+        max_clip = max(score for _, score in clip_results)
+        for scene_id, score in clip_results:
+            clip_scores[scene_id] = score / max_clip if max_clip > 0 else 0
+
+    text_scores = {}
+    if text_results:
+        max_text = max(score for _, score in text_results)
+        for scene_id, score in text_results:
+            text_scores[scene_id] = score / max_text if max_text > 0 else 0
+
+    # Merge: scenes matching BOTH get boosted
+    all_ids = set(clip_scores.keys()) | set(text_scores.keys())
+    merged = []
+    for scene_id in all_ids:
+        c = clip_scores.get(scene_id, 0)
+        t = text_scores.get(scene_id, 0)
+
+        if c > 0 and t > 0:
+            # Both match — boosted score
+            score = (c * 0.5 + t * 0.5) * 1.3
+            match_type = "visual+text"
+        elif c > 0:
+            score = c * 0.5
+            match_type = "visual"
+        else:
+            score = t * 0.5
+            match_type = "text"
+
+        scene = db.get_scene(scene_id)
+        if scene:
+            scene["score"] = min(score, 1.0)
+            scene["match_type"] = match_type
+            merged.append(scene)
+
+    # Sort by score descending
+    merged.sort(key=lambda s: s["score"], reverse=True)
+    return merged[:k]

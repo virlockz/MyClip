@@ -31,6 +31,27 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_episode ON scenes(episode);
             CREATE INDEX IF NOT EXISTS idx_season ON scenes(season);
         """)
+        # FTS5 virtual table for full-text search on subtitles
+        self.conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS scenes_fts USING fts5(
+                subtitle_text,
+                content='scenes',
+                content_rowid='id'
+            );
+        """)
+        # Triggers to keep FTS index in sync
+        self.conn.executescript("""
+            CREATE TRIGGER IF NOT EXISTS scenes_ai AFTER INSERT ON scenes BEGIN
+                INSERT INTO scenes_fts(rowid, subtitle_text) VALUES (new.id, new.subtitle_text);
+            END;
+            CREATE TRIGGER IF NOT EXISTS scenes_ad AFTER DELETE ON scenes BEGIN
+                INSERT INTO scenes_fts(scenes_fts, rowid, subtitle_text) VALUES('delete', old.id, old.subtitle_text);
+            END;
+            CREATE TRIGGER IF NOT EXISTS scenes_au AFTER UPDATE ON scenes BEGIN
+                INSERT INTO scenes_fts(scenes_fts, rowid, subtitle_text) VALUES('delete', old.id, old.subtitle_text);
+                INSERT INTO scenes_fts(rowid, subtitle_text) VALUES (new.id, new.subtitle_text);
+            END;
+        """)
         self.conn.commit()
 
     def insert_scene(
@@ -82,6 +103,37 @@ class Database:
 
     def get_all_scenes(self) -> list[dict]:
         return self.get_scenes()
+
+    def search_text(self, query: str, limit: int = 10) -> list[tuple[int, float]]:
+        """Full-text search on subtitle text using FTS5.
+
+        Args:
+            query: Search query (supports phrases in quotes).
+            limit: Max results.
+
+        Returns:
+            List of (scene_id, bm25_score) tuples, sorted by relevance.
+        """
+        try:
+            rows = self.conn.execute(
+                """SELECT rowid, bm25(scenes_fts) as score
+                   FROM scenes_fts
+                   WHERE scenes_fts MATCH ?
+                   ORDER BY score
+                   LIMIT ?""",
+                (query, limit),
+            ).fetchall()
+            return [(row["rowid"], -row["score"]) for row in rows]
+        except sqlite3.OperationalError:
+            # FTS5 query syntax error — fall back to simple LIKE
+            rows = self.conn.execute(
+                """SELECT id, 1.0 as score
+                   FROM scenes
+                   WHERE subtitle_text LIKE ?
+                   LIMIT ?""",
+                (f"%{query}%", limit),
+            ).fetchall()
+            return [(row["id"], row["score"]) for row in rows]
 
     def close(self):
         self.conn.close()

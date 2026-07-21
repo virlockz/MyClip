@@ -3,8 +3,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from myclip.database import Database
-from myclip.search import SearchIndex
-from myclip.embeddings import embed_text
+from myclip.search import SearchIndex, hybrid_search
 from myclip.export import export_clip
 from myclip.config import CLIPS_DIR, THUMBNAILS_DIR
 
@@ -31,15 +30,8 @@ def create_app(db: Database, index: SearchIndex) -> FastAPI:
 
     @app.get("/api/search")
     def search(q: str, limit: int = 10):
-        query_vec = embed_text(q)
-        results = index.search(query_vec, k=limit)
-        scenes = []
-        for scene_id, score in results:
-            scene = db.get_scene(scene_id)
-            if scene:
-                scene["score"] = score
-                scenes.append(scene)
-        return {"query": q, "results": scenes}
+        results = hybrid_search(q, index, db, k=limit)
+        return {"query": q, "results": results}
 
     @app.post("/api/export")
     def export_scenes(req: ExportRequest):
