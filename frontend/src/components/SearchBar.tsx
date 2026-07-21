@@ -19,22 +19,27 @@ export default function SearchBar({ onResults, loading, setLoading }: Props) {
   }
 
   return (
-    <div className="flex gap-4 mb-8">
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-        placeholder="Describe a scene... (e.g., 'Jane interrogating someone')"
-        className="flex-1 px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 text-white"
-      />
-      <button
-        onClick={handleSearch}
-        disabled={loading}
-        className="px-6 py-3 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-      >
-        {loading ? 'Searching...' : 'Search'}
-      </button>
+    <div className="search-container">
+      <div className="search-wrapper" style={{ position: 'relative' }}>
+        <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input
+          type="text"
+          className="search-input"
+          placeholder="Search scenes... (e.g., &quot;Red John&quot;, &quot;Jane interrogating&quot;)"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSearch()}
+        />
+        <button
+          className="search-btn"
+          onClick={handleSearch}
+          disabled={loading || !query.trim()}
+        >
+          {loading ? 'Searching...' : 'Search'}
+        </button>
+      </div>
     </div>
   )
 }

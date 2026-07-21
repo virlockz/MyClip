@@ -2,29 +2,48 @@ interface Props {
   scene: any
 }
 
+function MatchBadge({ type }: { type: string }) {
+  if (!type) return null
+
+  const config: Record<string, { label: string; className: string }> = {
+    'visual+text': { label: 'V+T', className: 'match-both' },
+    'visual': { label: 'V', className: 'match-visual' },
+    'text': { label: 'T', className: 'match-text' },
+  }
+
+  const { label, className } = config[type] || { label: type, className: '' }
+  return <span className={`scene-match ${className}`}>{label}</span>
+}
+
 export default function SceneCard({ scene }: Props) {
+  const thumbFilename = scene.thumbnail_path?.split(/[/\\]/).pop() || ''
+
   return (
-    <div className="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-blue-500 transition">
+    <div className="scene-card">
       <img
-        src={`/api/thumbnails/${scene.thumbnail_path?.split('/').pop()}`}
+        src={`/api/thumbnails/${thumbFilename}`}
         alt={`Scene ${scene.scene_number}`}
-        className="w-full h-40 object-cover"
+        className="scene-thumb"
+        loading="lazy"
       />
-      <div className="p-3">
-        <div className="text-sm text-blue-400 mb-1">
-          {scene.episode} — Scene {scene.scene_number}
+      <div className="scene-info">
+        <div className="scene-meta">
+          <span className="scene-episode">{scene.episode}</span>
+          <span className="scene-time">
+            {scene.start_time?.toFixed(1)}s — {scene.end_time?.toFixed(1)}s
+          </span>
         </div>
-        <div className="text-xs text-gray-400 mb-1">
-          {scene.start_time?.toFixed(1)}s — {scene.end_time?.toFixed(1)}s
-        </div>
-        <p className="text-sm text-gray-300 line-clamp-2">
+        <p className="scene-dialogue">
           {scene.subtitle_text || 'No dialogue'}
         </p>
-        {scene.score !== undefined && (
-          <div className="text-xs text-green-400 mt-1">
-            Match: {(scene.score * 100).toFixed(0)}%
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+          <MatchBadge type={scene.match_type} />
+          {scene.score !== undefined && (
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              {(scene.score * 100).toFixed(0)}%
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )
