@@ -1,11 +1,16 @@
-from fastapi import FastAPI, HTTPException
+import shutil
+import tempfile
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from myclip.database import Database
 from myclip.search import SearchIndex, hybrid_search
 from myclip.export import export_clip
-from myclip.config import CLIPS_DIR, THUMBNAILS_DIR
+from myclip.ingest import ingest_directory
+from myclip.config import CLIPS_DIR, THUMBNAILS_DIR, DB_PATH, FAISS_PATH, EMBEDDING_DIM, DATA_DIR
 
 
 class ExportRequest(BaseModel):
@@ -13,7 +18,11 @@ class ExportRequest(BaseModel):
     scenes: list[int]
 
 
-def create_app(db: Database, index: SearchIndex) -> FastAPI:
+def create_app(db: Database | None = None, index: SearchIndex | None = None) -> FastAPI:
+    if db is None:
+        db = Database(DB_PATH)
+    if index is None:
+        index = SearchIndex(dim=EMBEDDING_DIM, path=FAISS_PATH)
     app = FastAPI(title="MyClip", version="0.1.0")
 
     @app.get("/api/scenes")
@@ -54,4 +63,35 @@ def create_app(db: Database, index: SearchIndex) -> FastAPI:
                     return FileResponse(path, media_type="image/jpeg")
         raise HTTPException(404, "Thumbnail not found")
 
+    @app.post("/api/upload")
+    async def upload_files(files: list[UploadFile] = File(...)):
+        upload_dir = DATA_DIR / "uploads" / tempfile.mkdtemp()
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        for upload in files:
+            filename = upload.filename or "unknown"
+            dest = upload_dir / filename
+            with open(dest, "wb") as f:
+                content = await upload.read()
+                f.write(content)
+
+        return {"directory": str(upload_dir), "files": len(files)}
+
+    @app.post("/api/ingest-uploaded")
+    def ingest_uploaded(req: dict):
+        directory = req.get("directory")
+        if not directory:
+            raise HTTPException(400, "directory is required")
+
+        dir_path = Path(directory)
+        if not dir_path.exists():
+            raise HTTPException(404, "Upload directory not found")
+
+        count = ingest_directory(dir_path, db, index)
+        return {"success": True, "scenes": count}
+
     return app
+
+
+# Module-level app for uvicorn
+app = create_app()

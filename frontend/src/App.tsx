@@ -85,7 +85,10 @@ function App() {
         )}
 
         {!hasData && !showIngest && (
-          <EmptyState onIngest={() => setShowIngest(true)} />
+          <EmptyState
+            onIngest={() => setShowIngest(true)}
+            onComplete={() => window.location.reload()}
+          />
         )}
 
         {showIngest && (
