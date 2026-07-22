@@ -1,4 +1,4 @@
-import { Scene } from '../types';
+import type { Scene } from '../types';
 
 const API = '/api';
 
